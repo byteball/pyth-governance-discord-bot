@@ -1,12 +1,17 @@
 const eventBus = require('ocore/event_bus.js');
+const network = require('ocore/network');
 const headlessWallet = require('headless-obyte');
+const walletGeneral = require('ocore/wallet_general');
+const lightWallet = require('ocore/light_wallet');
+const storage = require('ocore/storage');
+const mutex = require('ocore/mutex');
 const DiscordNotification = require('./controllers/Discord.js');
 const conf = require('./conf.js');
-const network = require('ocore/network');
 const { reqFromLight, getSV, getSVValue, getSVWithAddress } = require('./services/obyte');
 const { getAssetWithMeta } = require('./services/getAssetWithMeta')
 const { convertFieldValues } = require("./utils/convertValue");
 const { getVPFromNormalized } = require("./utils/getVPFromNormalized");
+const { getUnitData } = require("./utils/unit");
 
 const assocStakingToMeta = {};
 
@@ -78,24 +83,42 @@ async function prepareDataByPools(metaByBaseAas, varsWithAddresses) {
 	}
 }
 
+const alreadyWatching = new Set();
+function addAddressToWatch(address) {
+	if (alreadyWatching.has(address)) return;
+	
+	network.addLightWatchedAa(address);
+	walletGeneral.addWatchedAddress(address);
+	alreadyWatching.add(address);
+}
+
 async function start() {
+	const unlock = await mutex.lock('notifications');
 	const metaByBaseAAs = await reqFromLight('light/get_aas_by_base_aas', { base_aas: conf.base_aas });
 	const pForVars = metaByBaseAAs.map(meta => getSVWithAddress(meta.address));
 	const varsWithAddresses = await Promise.all(pForVars);
 	await prepareDataByPools(metaByBaseAAs, varsWithAddresses);
 	
-	Object.keys(assocStakingToMeta).forEach(aa => {
-		network.addLightWatchedAa(aa);
+	[...Object.keys(assocStakingToMeta), ...conf.base_aas].forEach(aa => {
+		addAddressToWatch(aa);
 	});
+	unlock();
+	
+	setTimeout(() => {
+		lightWallet.refreshLightClientHistory([...alreadyWatching]);
+	}, 10 * 1000);
 }
+setInterval(start, 30 * 60 * 1000);
 
-function formatAndSendMessageForDiscord(params) {
+async function formatAndSendMessageForDiscord(params) {
+	const unlock = await mutex.lock('notifications');
 	const {
 		aa_address,
 		trigger_address,
 		voteName,
 		voteValue,
 		voteVP,
+		totalVPByParam,
 		leaderValue,
 		leaderVP,
 		trigger_unit,
@@ -107,15 +130,17 @@ function formatAndSendMessageForDiscord(params) {
 	const fLeadValue = convertFieldValues(voteName, leaderValue);
 	
 	const fVoteVP = getVPFromNormalized(voteVP, meta.decayFactor) / 10 ** meta.asset0Meta.decimals;
+	const fTotalVPByParam = getVPFromNormalized(totalVPByParam, meta.decayFactor) / 10 ** meta.asset0Meta.decimals;
 	const fLeaderVP = getVPFromNormalized(leaderVP, meta.decayFactor) / 10 ** meta.asset0Meta.decimals;
 	
 	const msg = notification.getNewEmbed();
 	msg.setTitle(`Support added in ${meta.reserveAssetMeta.symbol}/${meta.asset0Meta.symbol} - ${aa_address}`);
-	msg.setDescription(`User ${trigger_address} voted for \`${voteName}\`${symbol ? ' in ' + symbol : ''}  of parameter \`${fVoteValue}\``);
+	msg.setDescription(`User ${trigger_address} voted for \`${voteName}\`${symbol ? ' in ' + symbol : ''}  of parameter \`${fVoteValue}\`. Added ${fVoteVP.toPrecision(6)} VP.`);
+	msg.addFields({ name: 'Leader', value: `[${trigger_address}](${conf.explorer_url}/${trigger_address})` });
 	
 	msg.addFields(
 		{ name: "Value", value: fVoteValue, inline: true },
-		{ name: "VP", value: fVoteVP.toPrecision(6), inline: true },
+		{ name: "VP", value: fTotalVPByParam.toPrecision(6), inline: true },
 		{ name: '\u200B', value: '\u200B', inline: true }
 	);
 	msg.addFields(
@@ -130,28 +155,43 @@ function formatAndSendMessageForDiscord(params) {
 	conf.discord_channels.forEach(v => {
 		notification.sendEmbed(v, msg);
 	})
+	unlock();
 }
 
-eventBus.on("message_for_light", async (ws, subject, body) => {
-	if (subject !== 'light/aa_response') return;
-	
-	const { aa_address, trigger_address, trigger_unit, updatedStateVars } = body;
-	const stateVars = updatedStateVars[aa_address]
-	const voteKeyForState = Object.keys(stateVars).find(k => k.startsWith(`user_value_votes_${trigger_address}`));
-	let voteName = voteKeyForState.substring(50);
-	const voteValue = stateVars[voteKeyForState].value.value;
-	const voteVP = stateVars[voteKeyForState].value.vp;
-	const vars = await getSV(aa_address);
-	const leaderValue = vars[`leader_${voteName}`].value;
-	const leaderVP = vars[`value_votes_${voteName}_${leaderValue}`] || 0;
-	if (voteName.includes('add_price_aa')) return;
-	
-	let symbol = '';
-	if (voteName.includes('change_drift_rate')) {
-		const asset = voteName.substring('change_drift_rate'.length);
-		symbol = (await getAssetWithMeta(asset)).symbol;
-		voteName = 'change_drift_rate';
+function processAADefinition(objUnit) {
+	const definitionMessages = objUnit.messages.filter(m => m.app === 'definition');
+	for (let message of definitionMessages) {
+		const definitionPayload = message.payload;
+		const definition = definitionPayload.definition;
+		const base_aa = definition[1].base_aa;
+		
+		if(conf.base_aas.includes(base_aa)) {
+			start();
+		}
 	}
+}
+
+async function processAAResponse(body) {
+	const { aa_address, trigger_address, trigger_unit } = body;
+	if (conf.base_aas.includes(aa_address)) return;
+	
+	const objTriggerUnit = await storage.readUnit(trigger_unit);
+	const data = getUnitData(objTriggerUnit);
+	if (!data.vote_value) return;
+	
+	if (data.name === 'add_price_aa') return;
+	const voteName = data.name;
+	const voteValue = data.value;
+	let symbol = '';
+	if (data.asset) {
+		symbol = (await getAssetWithMeta(asset)).symbol;
+	}
+	
+	const vars = await getSV(aa_address);
+	const voteVP = vars[`user_value_votes_${trigger_address}_${voteName}${data.asset || ''}`].vp;
+	const totalVPByParam = vars[`value_votes_${voteName}_${voteValue}`];
+	const leaderValue = vars[`leader_${voteName}${data.asset || ''}`].value;
+	const leaderVP = vars[`value_votes_${voteName}_${leaderValue}`] || 0;
 	
 	formatAndSendMessageForDiscord({
 		aa_address,
@@ -159,9 +199,18 @@ eventBus.on("message_for_light", async (ws, subject, body) => {
 		voteName,
 		voteValue,
 		voteVP,
+		totalVPByParam,
 		leaderValue,
 		leaderVP,
 		trigger_unit,
 		symbol,
 	});
+}
+
+eventBus.on("message_for_light", (ws, subject, body) => {
+	if(subject === 'light/aa_definition') {
+		processAADefinition(body);
+	}
 });
+
+eventBus.on('aa_response', processAAResponse);
