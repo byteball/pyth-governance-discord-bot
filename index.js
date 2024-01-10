@@ -112,11 +112,21 @@ async function start() {
 
 setInterval(start, 30 * 60 * 1000);
 
+async function getAssetFromPriceAA(priceAA) {
+	const definition = await reqFromLight('light/get_definition', priceAA);
+	const feed_name = definition[1].params?.feed_name;
+	if (!feed_name) {
+		return priceAA;
+	}
+	
+	return feed_name.split('_')[0];
+}
 
-function getDescription(trigger_address, voteName, symbol, fVoteValue, fVoteVP, priceAA) {
+async function getDescription(trigger_address, voteName, symbol, fVoteValue, fVoteVP, priceAA) {
 	if (priceAA) {
-		const action = fVoteValue === 'yes' ? 'adding' : 'not adding';
-		return `User ${trigger_address} voted for ${action} \`${priceAA}\`. Added ${fVoteVP.toPrecision(6)}VP for vote`;
+		const action = fVoteValue === 'yes' ? 'to add' : 'not to add';
+		const asset = await getAssetFromPriceAA(priceAA);
+		return `User ${trigger_address} voted ${action} a token tracking the price of the \`${asset}\` asset. Added ${fVoteVP.toPrecision(6)}VP for vote`;
 	}
 	
 	return `User ${trigger_address} voted for \`${voteName}\`${symbol ? ' in ' + symbol : ''}  of parameter \`${fVoteValue}\`. Added ${fVoteVP.toPrecision(6)}VP for vote`
@@ -149,9 +159,7 @@ async function formatAndSendMessageForDiscord(params) {
 	const msg = notification.getNewEmbed();
 	msg.setTitle(`Support added in ${meta.reserveAssetMeta.symbol}/${meta.asset0Meta.symbol} - ${aa_address}`);
 	
-	msg.setDescription(getDescription(trigger_address, voteName, symbol, fVoteValue, fVoteVP, priceAA));
-	
-	msg.addFields({ name: 'Leader', value: `[${trigger_address}](${conf.explorer_url}/${trigger_address})` });
+	msg.setDescription(await getDescription(trigger_address, voteName, symbol, fVoteValue, fVoteVP, priceAA));
 	
 	msg.addFields(
 		{ name: "Value", value: fVoteValue, inline: true },
