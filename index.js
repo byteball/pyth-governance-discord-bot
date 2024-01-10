@@ -84,6 +84,7 @@ async function prepareDataByPools(metaByBaseAas, varsWithAddresses) {
 }
 
 const alreadyWatching = new Set();
+
 function addAddressToWatch(address) {
 	if (alreadyWatching.has(address)) return;
 	
@@ -108,7 +109,18 @@ async function start() {
 		lightWallet.refreshLightClientHistory([...alreadyWatching]);
 	}, 10 * 1000);
 }
+
 setInterval(start, 30 * 60 * 1000);
+
+
+function getDescription(trigger_address, voteName, symbol, fVoteValue, fVoteVP, priceAA) {
+	if (priceAA) {
+		const action = fVoteValue === 'yes' ? 'adding' : 'not adding';
+		return `User ${trigger_address} voted for ${action} \`${priceAA}\`. Added ${fVoteVP.toPrecision(6)}VP for vote`;
+	}
+	
+	return `User ${trigger_address} voted for \`${voteName}\`${symbol ? ' in ' + symbol : ''}  of parameter \`${fVoteValue}\`. Added ${fVoteVP.toPrecision(6)}VP for vote`
+}
 
 async function formatAndSendMessageForDiscord(params) {
 	const unlock = await mutex.lock('notifications');
@@ -123,11 +135,12 @@ async function formatAndSendMessageForDiscord(params) {
 		leaderVP,
 		trigger_unit,
 		symbol,
+		priceAA,
 	} = params;
 	const meta = assocStakingToMeta[aa_address];
 	
-	const fVoteValue = convertFieldValues(voteName, voteValue);
-	const fLeadValue = convertFieldValues(voteName, leaderValue);
+	const fVoteValue = priceAA ? voteValue : convertFieldValues(voteName, voteValue);
+	const fLeadValue = priceAA ? leaderValue : convertFieldValues(voteName, leaderValue);
 	
 	const fVoteVP = getVPFromNormalized(voteVP, meta.decayFactor) / 10 ** meta.asset0Meta.decimals;
 	const fTotalVPByParam = getVPFromNormalized(totalVPByParam, meta.decayFactor) / 10 ** meta.asset0Meta.decimals;
@@ -135,7 +148,9 @@ async function formatAndSendMessageForDiscord(params) {
 	
 	const msg = notification.getNewEmbed();
 	msg.setTitle(`Support added in ${meta.reserveAssetMeta.symbol}/${meta.asset0Meta.symbol} - ${aa_address}`);
-	msg.setDescription(`User ${trigger_address} voted for \`${voteName}\`${symbol ? ' in ' + symbol : ''}  of parameter \`${fVoteValue}\`. Added ${fVoteVP.toPrecision(6)} VP.`);
+	
+	msg.setDescription(getDescription(trigger_address, voteName, symbol, fVoteValue, fVoteVP, priceAA));
+	
 	msg.addFields({ name: 'Leader', value: `[${trigger_address}](${conf.explorer_url}/${trigger_address})` });
 	
 	msg.addFields(
@@ -151,6 +166,7 @@ async function formatAndSendMessageForDiscord(params) {
 	
 	
 	msg.addFields({ name: 'Trigger unit', value: `[${trigger_unit}](${conf.explorer_url}/${trigger_unit})` });
+	msg.addFields({ name: 'Governance', value: `[View Governance](${conf.perpetual_url}/${meta.perp})` });
 	
 	conf.discord_channels.forEach(v => {
 		notification.sendEmbed(v, msg);
@@ -165,7 +181,7 @@ function processAADefinition(objUnit) {
 		const definition = definitionPayload.definition;
 		const base_aa = definition[1].base_aa;
 		
-		if(conf.base_aas.includes(base_aa)) {
+		if (conf.base_aas.includes(base_aa)) {
 			start();
 		}
 	}
@@ -179,19 +195,30 @@ async function processAAResponse(body) {
 	const data = getUnitData(objTriggerUnit);
 	if (!data.vote_value) return;
 	
-	if (data.name === 'add_price_aa') return;
+	
 	const voteName = data.name;
 	const voteValue = data.value;
 	let symbol = '';
+	let priceAA = '';
+	if (data.name === 'add_price_aa') {
+		priceAA = data.price_aa;
+	}
 	if (data.asset) {
-		symbol = (await getAssetWithMeta(asset)).symbol;
+		symbol = (await getAssetWithMeta(data.asset)).symbol;
+	}
+	
+	let suffix = '';
+	if (priceAA) {
+		suffix = priceAA;
+	} else if(data.asset) {
+		suffix = data.asset;
 	}
 	
 	const vars = await getSV(aa_address);
-	const voteVP = vars[`user_value_votes_${trigger_address}_${voteName}${data.asset || ''}`].vp;
-	const totalVPByParam = vars[`value_votes_${voteName}_${voteValue}`];
-	const leaderValue = vars[`leader_${voteName}${data.asset || ''}`].value;
-	const leaderVP = vars[`value_votes_${voteName}_${leaderValue}`] || 0;
+	const voteVP = vars[`user_value_votes_${trigger_address}_${voteName}${suffix}`].vp;
+	const totalVPByParam = vars[`value_votes_${voteName}${suffix}_${voteValue}`];
+	const leaderValue = vars[`leader_${voteName}${suffix}`].value;
+	const leaderVP = vars[`value_votes_${voteName}${suffix}_${leaderValue}`] || 0;
 	
 	formatAndSendMessageForDiscord({
 		aa_address,
@@ -204,11 +231,12 @@ async function processAAResponse(body) {
 		leaderVP,
 		trigger_unit,
 		symbol,
+		priceAA,
 	});
 }
 
 eventBus.on("message_for_light", (ws, subject, body) => {
-	if(subject === 'light/aa_definition') {
+	if (subject === 'light/aa_definition') {
 		processAADefinition(body);
 	}
 });
