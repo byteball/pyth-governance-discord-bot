@@ -1,3 +1,5 @@
+const Decimal = require('decimal.js');
+
 const fieldTypes = {
   swap_fee: "percent",
   arb_profit_tax: "percent",
@@ -13,9 +15,9 @@ const fieldTypes = {
 function rawToFormatVotingValue(type, value) {
   switch (type) {
     case "date":
-      return value / 24 / 3600;
+      return new Decimal(value).div(24).div(3600).toNumber();
     case "percent":
-      return value * 100;
+      return new Decimal(value).times(100).toNumber();
     default:
       return value;
   }
