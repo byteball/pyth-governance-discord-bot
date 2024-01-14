@@ -13,7 +13,7 @@ exports.bNoPassphrase = true;
 exports.storage = 'sqlite';
 
 exports.hub = process.env.testnet ? 'obyte.org/bb-test' : 'obyte.org/bb';
-exports.deviceName = 'discordbot';
+exports.deviceName = 'Pyth Discord Bot';
 exports.permanent_pairing_secret = '0000'; // use '*' to allow any or generate random string
 exports.control_addresses = ['DEVICE ALLOWED TO CHAT'];
 exports.payout_address = 'WHERE THE MONEY CAN BE SENT TO';
@@ -28,4 +28,4 @@ exports.perpetual_url = process.env.testnet ? 'https://perpetual-ui-vue.vercel.a
 exports.base_aas = ['LUXMFMYM2J6XBV3OG7G5R5XJFM3JPDBI'];
 exports.registry_aa = 'O6H6ZIFI57X3PLTYHOCVYPP5A553CYFQ';
 
-console.log('finished headless conf');
+console.log('finished pyth discord bot conf');

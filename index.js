@@ -15,7 +15,7 @@ const { getUnitData } = require("./utils/unit");
 
 const assocStakingToMeta = {};
 
-const notification = new DiscordNotification("Perpetual Governance AAs", conf.discord_token);
+const notification = new DiscordNotification("Pyth Governance AAs", conf.discord_token);
 const readyPromise = new Promise((resolve) => {
 	eventBus.once('headless_wallet_ready', resolve);
 });
@@ -126,10 +126,10 @@ async function getDescription(trigger_address, voteName, symbol, fVoteValue, fVo
 	if (priceAA) {
 		const action = fVoteValue === 'yes' ? 'to add' : 'not to add';
 		const asset = await getAssetFromPriceAA(priceAA);
-		return `User ${trigger_address} voted ${action} a token tracking the price of the \`${asset}\` asset. Added ${fVoteVP.toPrecision(6)}VP for vote`;
+		return `User ${trigger_address} voted ${action} a new perpetual token tracking the price of \`${asset}\`. Added VP: ${fVoteVP.toPrecision(6)}.`;
 	}
 	
-	return `User ${trigger_address} voted for \`${voteName}\`${symbol ? ' in ' + symbol : ''}  of parameter \`${fVoteValue}\`. Added ${fVoteVP.toPrecision(6)}VP for vote`
+	return `User ${trigger_address} voted for \`${voteName}\`=\`${fVoteValue}\`${symbol ? ' in ' + symbol : ''}. Added VP: ${fVoteVP.toPrecision(6)}.`
 }
 
 async function formatAndSendMessageForDiscord(params) {
@@ -167,14 +167,14 @@ async function formatAndSendMessageForDiscord(params) {
 		{ name: '\u200B', value: '\u200B', inline: true }
 	);
 	msg.addFields(
-		{ name: "Lead value", value: fLeadValue, inline: true },
+		{ name: "Leader value", value: fLeadValue, inline: true },
 		{ name: "VP", value: fLeaderVP.toPrecision(6), inline: true },
 		{ name: '\u200B', value: '\u200B', inline: true }
 	);
 	
 	
 	msg.addFields({ name: 'Trigger unit', value: `[${trigger_unit}](${conf.explorer_url}/${trigger_unit})` });
-	msg.addFields({ name: 'Governance', value: `[View Governance](${conf.perpetual_url}/${meta.perp})` });
+	msg.addFields({ name: 'Governance', value: `[Vote to support or reject this value](${conf.perpetual_url}/${meta.perp})` });
 	
 	conf.discord_channels.forEach(v => {
 		notification.sendEmbed(v, msg);
