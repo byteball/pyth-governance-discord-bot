@@ -1,0 +1,1 @@
+*/20 * * * * cd pyth-governance-discord-bot; node check_daemon.js 1>>~/.config/pyth-governance-discord-bot/check_daemon.log 2>>~/.config/pyth-governance-discord-bot/check_daemon.err
