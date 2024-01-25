@@ -7,7 +7,7 @@ exports.bLight = true;
 exports.bSingleAddress = true;
 exports.bStaticChangeAddress = false;
 
-exports.logToSTDOUT = true;
+//exports.logToSTDOUT = true;
 exports.bNoPassphrase = true;
 
 exports.storage = 'sqlite';
