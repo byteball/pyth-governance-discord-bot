@@ -24,7 +24,7 @@ exports.discord_token = process.env.discord_token;
 exports.discord_channels = [process.env.channel];
 
 exports.explorer_url = process.env.testnet ? 'https://testnetexplorer.obyte.org' : 'https://explorer.obyte.org';
-exports.perpetual_url = process.env.testnet ? 'https://perpetual-ui-vue.vercel.app/governance/management' : 'https://perpetual-ui-vue.vercel.app/governance/management';
+exports.perpetual_url = process.env.testnet ? 'https://testnet.pyth.ooo/governance/management' : 'https://pyth.ooo/governance/management';
 exports.base_aas = ['LUXMFMYM2J6XBV3OG7G5R5XJFM3JPDBI'];
 exports.registry_aa = 'O6H6ZIFI57X3PLTYHOCVYPP5A553CYFQ';
 
