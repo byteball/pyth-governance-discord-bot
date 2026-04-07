@@ -25,7 +25,7 @@ exports.discord_channels = [process.env.channel];
 
 exports.explorer_url = process.env.testnet ? 'https://testnetexplorer.obyte.org' : 'https://explorer.obyte.org';
 exports.perpetual_url = process.env.testnet ? 'https://testnet.pyth.ooo/governance/management' : 'https://pyth.ooo/governance/management';
-exports.base_aas = ['A336I77COVXUCN3L2YOYVIZF7PKMFCAV', 'XOCPOYWUVSOMFMIBXX4X7ICXXGU4DG5E','SUC6VYFSSRU5EMFYV3BTBG3S4PFBCA7U'];
+exports.base_aas = ['A336I77COVXUCN3L2YOYVIZF7PKMFCAV', 'XOCPOYWUVSOMFMIBXX4X7ICXXGU4DG5E', 'M5HW5CQWUT52AMZ3YXKWN2BAHKUQNOXX'];
 exports.registry_aa = 'O6H6ZIFI57X3PLTYHOCVYPP5A553CYFQ';
 
 console.log('finished pyth discord bot conf');
