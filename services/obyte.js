@@ -14,6 +14,7 @@ async function reqFromLight(name, params) {
 		try {
 			return await network.requestFromLightVendor(name, params);
 		} catch (e) {
+			console.error(`Attempt ${attempt} failed for request ${name}:`, e);
 			lastError = e;
 			if (attempt < RETRY_ATTEMPTS) {
 				await wait(RETRY_DELAY_MS);
